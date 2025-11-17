@@ -6,9 +6,7 @@ Repository ini berisi kumpulan proyek² Rekayasa Perangkat Lunak (*RPL*) kelas X
 
 ## Struktur Folder 🗃️
 
-- `matematika/` : Tugas & proyek Matematika
-- `fisika/` : Tugas & proyek Fisika
-- `kimia/` : Tugas & proyek Kimia
+- `Kalkulator/` : Tugas kalkulator dengan HTML, CSS, dan JavaScript sederhana
 
 ## Cara Menggunakan 🔧
 
