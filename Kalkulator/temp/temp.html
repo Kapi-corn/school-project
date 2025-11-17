@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kalkulator — Expression + Result Display</title>
+<style>
+  :root{
+    --bg:#0f1724;
+    --panel:#0b1220;
+    --accent:#6ee7b7;
+    --muted:#94a3b8;
+    --btn:#101827;
+    --btn-hover:#162433;
+    --danger:#ef4444;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(180deg,#071129 0%, #0a1020 100%);
+    color:#e6eef8;
+    padding:24px;
+  }
+  .calc {
+    width: 360px;
+    max-width:100%;
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:16px;
+    padding:18px;
+    box-shadow: 0 10px 30px rgba(2,6,23,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+    border:1px solid rgba(255,255,255,0.03);
+  }
+
+  /* Displays */
+  .display {
+    background:rgba(255,255,255,0.02);
+    border-radius:10px;
+    padding:12px 14px;
+    min-height:72px;
+    margin-bottom:12px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:6px;
+  }
+  .expression {
+    font-size:18px;
+    color:var(--muted);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    direction:rtl; /* keep cursor/truncation aligned to right */
+    padding-right:6px;
+  }
+  .result {
+    font-size:28px;
+    font-weight:600;
+    color:var(--accent);
+    text-align:right;
+    padding-right:4px;
+  }
+
+  /* Buttons grid */
+  .keys{
+    display:grid;
+    grid-template-columns: repeat(4,1fr);
+    gap:10px;
+  }
+  button.key{
+    background:var(--btn);
+    border:1px solid rgba(255,255,255,0.03);
+    border-radius:10px;
+    padding:16px 10px;
+    font-size:18px;
+    cursor:pointer;
+    transition:transform .06s ease, background .12s;
+    user-select:none;
+  }
+  button.key:active{transform:translateY(1px)}
+  button.key:hover{background:var(--btn-hover)}
+  button.op{ color: #f8e7b6; font-weight:600 }
+  button.eq { background: linear-gradient(180deg,#1b5f3f,#145636); color:white; grid-column: span 1; }
+  button.clear { background: linear-gradient(180deg,#5b2130,#3e1220); color:white; }
+  button.span-2 { grid-column: span 2; }
+
+  /* smaller labels for accessibility */
+  .sr { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
+
+  /* mobile tweaks */
+  @media (max-width:380px){
+    .display{min-height:64px}
+    .result{font-size:24px}
+    button.key{padding:12px; font-size:16px}
+  }
+</style>
+</head>
+<body>
+  <main class="calc" role="application" aria-label="Kalkulator ekspresi dan hasil">
+    <section class="display" aria-live="polite">
+      <div id="expressionDisplay" class="expression" aria-label="Ekspresi" title="Ekspresi">0</div>
+      <div id="resultDisplay" class="result" aria-label="Hasil" title="Hasil">0</div>
+    </section>
+
+    <section class="keys" role="group" aria-label="Tombol kalkulator">
+      <button class="key clear" data-action="clear" aria-label="Clear (C)">C</button>
+      <button class="key" data-action="paren" data-value="(" aria-label="Buka kurung">(</button>
+      <button class="key" data-action="paren" data-value=")" aria-label="Tutup kurung">)</button>
+      <button class="key op" data-value="÷" aria-label="Bagi">÷</button>
+
+      <button class="key" data-value="7">7</button>
+      <button class="key" data-value="8">8</button>
+      <button class="key" data-value="9">9</button>
+      <button class="key op" data-value="×" aria-label="Kali">×</button>
+
+      <button class="key" data-value="4">4</button>
+      <button class="key" data-value="5">5</button>
+      <button class="key" data-value="6">6</button>
+      <button class="key op" data-value="-" aria-label="Kurang">−</button>
+
+      <button class="key" data-value="1">1</button>
+      <button class="key" data-value="2">2</button>
+      <button class="key" data-value="3">3</button>
+      <button class="key op" data-value="+" aria-label="Tambah">+</button>
+
+      <button class="key" data-action="back" aria-label="Backspace">←</button>
+      <button class="key" data-value="0">0</button>
+      <button class="key" data-value=".">.</button>
+      <button class="key eq" data-action="equals" aria-label="Sama dengan">=</button>
+    </section>
+  </main>
+
+<script>
+(function(){
+  const exprEl = document.getElementById('expressionDisplay');
+  const resultEl = document.getElementById('resultDisplay');
+  let expr = ''; // internal expression with standard operators: + - * / ( )
+  const btns = document.querySelectorAll('.key');
+
+  // Map display operator symbols to JS operators when evaluating
+  const toJSEq = s => s.replaceAll('×','*').replaceAll('÷','/').replaceAll('−','-'); 
+
+  function sanitizeDisplayForEval(displayStr){
+    // Allow digits, whitespace, + - * / . ( )
+    // We will convert × ÷ − to * / - before testing.
+    const js = toJSEq(displayStr);
+    // Reject any characters not in allowed set
+    if (/[^0-9+\-*/().\s]/.test(js)) return null;
+    return js;
+  }
+
+  function updateDisplays(){
+    exprEl.textContent = expr === '' ? '0' : expr;
+    // compute live result
+    const sanitized = sanitizeDisplayForEval(expr);
+    if (!sanitized || sanitized.trim()==='') {
+      resultEl.textContent = '0';
+      return;
+    }
+    try {
+      // Use Function to evaluate sanitized JS expression
+      // Keep it inside try/catch to avoid breaking
+      const value = Function('"use strict"; return (' + sanitized + ')')();
+      // Only show finite numbers
+      if (typeof value === 'number' && isFinite(value)) {
+        // format: remove trailing zeros from decimals
+        resultEl.textContent = Number.isInteger(value) ? String(value) : String(parseFloat(value.toFixed(12))).replace(/\.0+$/,'');
+      } else {
+        resultEl.textContent = 'Error';
+      }
+    } catch(e) {
+      resultEl.textContent = ''; // clear while typing invalid partial expressions
+    }
+  }
+
+  // Button click handling
+  btns.forEach(b=>{
+    b.addEventListener('click', ()=> {
+      const val = b.getAttribute('data-value');
+      const action = b.getAttribute('data-action');
+      if (action === 'clear') {
+        expr = '';
+      } else if (action === 'back') {
+        expr = expr.slice(0, -1);
+      } else if (action === 'equals') {
+        // On equals, evaluate and replace expression with the result (if valid)
+        const sanitized = sanitizeDisplayForEval(expr);
+        if (!sanitized) return;
+        try {
+          const value = Function('"use strict"; return (' + sanitized + ')')();
+          if (typeof value === 'number' && isFinite(value)) {
+            expr = Number.isInteger(value) ? String(value) : String(parseFloat(value.toFixed(12))).replace(/\.0+$/,'');
+          } else {
+            // leave expr unchanged, show Error briefly
+            resultEl.textContent = 'Error';
+            return;
+          }
+        } catch(e) {
+          resultEl.textContent = 'Error';
+          return;
+        }
+      } else if (val !== null) {
+        // Append value to expression.
+        // Add simple input rules: prevent two operators in a row (except unary minus after '(')
+        const operators = ['+','-','×','÷','−','*','/'];
+        const last = expr.slice(-1);
+        // If val is operator symbol but display uses '−' vs '-', we used '-' on screen for minus already (we use normal '-')
+        // Allow '(' after operator or at start. Allow ')' only if there is unmatched '('
+        if (val === '(') {
+          // allowed anywhere (simple)
+          expr += '(';
+        } else if (val === ')') {
+          // only add if there is unmatched "("
+          const open = (expr.match(/\(/g)||[]).length;
+          const close = (expr.match(/\)/g)||[]).length;
+          if (open > close) expr += ')';
+        } else if (operators.includes(val)) {
+          // normalize displayed operator symbols for minus (we display '−' only on button but data-value is '-')
+          // prevent adding operator if expr is empty (except minus to start negative)
+          if (expr === '' && val !== '-') {
+            // ignore
+          } else if (operators.includes(last)) {
+            // replace last operator with new (but allow (- for negative)
+            // allow sequence like "(-" => keep both
+            if (val === '-' && last === '(') {
+              expr += val;
+            } else {
+              // replace last operator with new operator
+              expr = expr.slice(0,-1) + val;
+            }
+          } else {
+            expr += val;
+          }
+        } else {
+          // digits or dot
+          // basic multiple-dot prevention in a single number token:
+          if (val === '.') {
+            // find last token after operator or '('
+            const tokens = expr.split(/[\+\-\×\÷\*\/\(\)]/);
+            const lastToken = tokens[tokens.length-1] || '';
+            if (lastToken.includes('.')) {
+              // ignore second decimal point
+            } else {
+              expr += '.';
+            }
+          } else {
+            expr += val;
+          }
+        }
+      }
+      updateDisplays();
+    });
+  });
+
+  // Keyboard support
+  window.addEventListener('keydown', (ev)=>{
+    const key = ev.key;
+    if ((key >= '0' && key <= '9') || key === '.' ) {
+      // forward to corresponding button
+      document.querySelector(`.key[data-value="${key}"]`)?.click();
+      ev.preventDefault();
+    } else if (key === '+') {
+      document.querySelector('.key[data-value="+"]')?.click(); ev.preventDefault();
+    } else if (key === '-' || key === '_') {
+      // minus
+      document.querySelector('.key[data-value="-"]')?.click(); ev.preventDefault();
+    } else if (key === '*' ) {
+      // user pressed '*' on keyboard -> map to × button visually but we append * as operator
+      // We'll add '*' to expr directly (it is allowed in sanitize)
+      expr += '*'; updateDisplays(); ev.preventDefault();
+    } else if (key === '/') {
+      // map to ÷ visually? Use / in expression
+      expr += '/'; updateDisplays(); ev.preventDefault();
+    } else if (key === 'Enter' || key === '=') {
+      document.querySelector('.key[data-action="equals"]')?.click(); ev.preventDefault();
+    } else if (key === 'Backspace') {
+      document.querySelector('.key[data-action="back"]')?.click(); ev.preventDefault();
+    } else if (key === 'Escape') {
+      document.querySelector('.key[data-action="clear"]')?.click(); ev.preventDefault();
+    } else if (key === '(' || key === ')') {
+      expr += key; updateDisplays(); ev.preventDefault();
+    }
+  });
+
+  // initialize
+  updateDisplays();
+
+  // expose for debugging if needed
+  window._calc = {
+    getExpression: ()=>expr,
+    setExpression: (s)=>{ expr = String(s); updateDisplays(); }
+  };
+})();
+</script>
+</body>
+</html>
